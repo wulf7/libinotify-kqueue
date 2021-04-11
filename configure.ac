@@ -183,7 +183,7 @@ AC_ARG_ENABLE([unsafe_fchdir],
 
 atfuncs_support=yes
 AC_CHECK_FUNCS(openat fdopendir fstatat,,atfuncs_support=no)
-AC_CHECK_FUNCS(fdclosedir)
+AC_CHECK_FUNCS(fdclosedir faccessat)
 if test "$atfuncs_support" = "yes"; then
     AC_DEFINE([HAVE_ATFUNCS],[1],[Define to 1 if relative pathname functions detected])
 fi
@@ -202,6 +202,7 @@ AM_CONDITIONAL(HAVE_OPENAT, [test "$ac_cv_func_openat" = "yes"])
 AM_CONDITIONAL(HAVE_FDOPENDIR, [test "$ac_cv_func_fdopendir" = "yes"])
 AM_CONDITIONAL(HAVE_FDCLOSEDIR, [test "$ac_cv_func_fdclosedir" = "yes"])
 AM_CONDITIONAL(HAVE_FSTATAT, [test "$ac_cv_func_fstatat" = "yes"])
+AM_CONDITIONAL(HAVE_FACCESSAT, [test "$ac_cv_func_faccessat" = "yes"])
 
 f_getpath_support=no
 if test "$atfuncs_support" = "no"; then
