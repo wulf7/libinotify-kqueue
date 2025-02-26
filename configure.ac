@@ -125,27 +125,31 @@ AC_MSG_RESULT($have_stdatomic_h)
 
 if test "$have_stdatomic_h" = "no"; then
     AC_MSG_CHECKING(whether compiler supports atomic operations)
-    AC_RUN_IFELSE(
-    [
-        AC_LANG_PROGRAM(
+    AC_CACHE_VAL(ik_cv_have_compat_stdatomic_h, [
+        AC_RUN_IFELSE(
         [
-            @%:@include "compat/stdatomic.h"
+            AC_LANG_PROGRAM(
+            [
+                @%:@include "compat/stdatomic.h"
+            ],
+            [
+                atomic_uint t;
+                atomic_init(&t, 0);
+                atomic_fetch_add(&t, 1);
+                atomic_fetch_sub(&t, 1);
+                return atomic_load(&t);
+            ])
         ],
         [
-            atomic_uint t;
-            atomic_init(&t, 0);
-            atomic_fetch_add(&t, 1);
-            atomic_fetch_sub(&t, 1);
-            return atomic_load(&t);
-        ])
-    ],
-    [
+            ik_cv_have_compat_stdatomic_h=yes
+        ],
+            ik_cv_have_compat_stdatomic_h=no
+        )
+    ])
+    AC_MSG_RESULT($ik_cv_have_compat_stdatomic_h)
+    if test $ik_cv_have_compat_stdatomic_h = "yes"; then
         AC_DEFINE([HAVE_COMPAT_STDATOMIC_H],[1],[Define to 1 if the compiler supports atomic operations with compat/stdatomic.h])
-        have_compat_stdatomic_h=yes
-    ],
-        have_compat_stdatomic_h=no
-    )
-    AC_MSG_RESULT($have_compat_stdatomic_h)
+    fi
 fi
 AM_CONDITIONAL(NO_STDATOMIC, [test "$have_stdatomic_h" = "no" ])
 AM_CONDITIONAL(HAVE_COMPAT_STDATOMIC_H, [test "$have_compat_stdatomic_h" = "yes"])
@@ -261,115 +265,86 @@ AC_MSG_CHECKING(for NOTE_EXTEND on moving of a file into the watched subdirector
 rm -rf iktestdir
 mkdir iktestdir
 touch iktestfile
-AC_RUN_IFELSE(
-[
-    AC_LANG_PROGRAM(
-    [
-        @%:@include <sys/types.h>
-        @%:@include <sys/event.h>
-        @%:@include <sys/time.h>
-        @%:@include <stdio.h>
-        @%:@include <fcntl.h>
-    ],
-    [
-        int fd, kq;
-        struct kevent ev;
-        static const struct timespec tout = { 1, 0 };
-
-        if ((fd = open("iktestdir", O_RDONLY)) == -1) return 1;
-        if ((kq = kqueue()) == -1) return 1;
-        EV_SET(&ev, fd, EVFILT_VNODE, EV_ADD | EV_ENABLE | EV_ONESHOT,
-            NOTE_WRITE | NOTE_EXTEND, 0, 0);
-        if (kevent(kq, &ev, 1, NULL, 0, &tout) == -1) return 1;
-        if (rename ("iktestfile", "iktestdir/iktestfile") == -1) return 1;
-        if (kevent(kq, NULL, 0, &ev, 1, &tout) != 1) return 1;
-        return (ev.fflags & NOTE_EXTEND) ? 0 : 1;
-    ])
-],
-[
-    AC_DEFINE([HAVE_NOTE_EXTEND_ON_MOVE_TO],[1],[Define to 1 if move_to sets NODE_EXTEND flag])
-    AC_MSG_RESULT(yes)
-],
-    AC_MSG_RESULT(no)
-)
-
-AC_MSG_CHECKING(for NOTE_EXTEND on moving of a file from the watched subdirectory)
-AC_RUN_IFELSE(
-[
-    AC_LANG_PROGRAM(
-    [
-        @%:@include <sys/types.h>
-        @%:@include <sys/event.h>
-        @%:@include <sys/time.h>
-        @%:@include <stdio.h>
-        @%:@include <fcntl.h>
-    ],
-    [
-        int fd, kq;
-        struct kevent ev;
-        static const struct timespec tout = { 1, 0 };
-
-        if ((fd = open("iktestdir", O_RDONLY)) == -1) return 1;
-        if ((kq = kqueue()) == -1) return 1;
-        EV_SET(&ev, fd, EVFILT_VNODE, EV_ADD | EV_ENABLE | EV_ONESHOT,
-            NOTE_WRITE | NOTE_EXTEND, 0, 0);
-        if (kevent(kq, &ev, 1, NULL, 0, &tout) == -1) return 1;
-        if (rename ("iktestdir/iktestfile", "iktestfile") == -1) return 1;
-        if (kevent(kq, NULL, 0, &ev, 1, &tout) != 1) return 1;
-        return (ev.fflags & NOTE_EXTEND) ? 0 : 1;
-    ])
-],
-[
-    AC_DEFINE([HAVE_NOTE_EXTEND_ON_MOVE_FROM],[1],[Define to 1 if move_from sets NODE_EXTEND flag])
-    AC_MSG_RESULT(yes)
-],
-    AC_MSG_RESULT(no)
-)
-
-
-dnl Need a run-time check to build under linuxolator
-AC_MSG_CHECKING(for O_PATH in fcntl.h)
-AC_RUN_IFELSE(
-[
-    AC_LANG_PROGRAM(
-    [
-        @%:@include <fcntl.h>
-        @%:@include <unistd.h>
-    ],
-    [
-        int fd;
-        if ((fd = open("iktestdir", O_PATH)) == -1) return 1;
-        return lseek(fd, 0, SEEK_SET) != -1;
-    ])
-],
-[
-    AC_DEFINE([HAVE_O_PATH],[1],[Define to 1 if open supports O_PATH flag])
-    have_o_path=yes
-],
-    have_o_path=no
-)
-AC_MSG_RESULT($have_o_path)
-
-
-dnl Need a run-time check to build under linuxolator
-if test "$ac_cv_func_openat" = "yes"; then
-    AC_MSG_CHECKING(for O_EMPTY_PATH in fcntl.h)
+AC_CACHE_VAL(ik_cv_have_note_extend_in, [
     AC_RUN_IFELSE(
     [
-        AC_LANG_PROGRAM([@%:@include <fcntl.h>],[return openat(open("iktestdir", O_RDONLY), "", O_RDONLY | O_EMPTY_PATH) < 0;])
+        AC_LANG_PROGRAM(
+        [
+            @%:@include <sys/types.h>
+            @%:@include <sys/event.h>
+            @%:@include <sys/time.h>
+            @%:@include <stdio.h>
+            @%:@include <fcntl.h>
+        ],
+        [
+            int fd, kq;
+            struct kevent ev;
+            static const struct timespec tout = { 1, 0 };
+
+            if ((fd = open("iktestdir", O_RDONLY)) == -1) return 1;
+            if ((kq = kqueue()) == -1) return 1;
+            EV_SET(&ev, fd, EVFILT_VNODE, EV_ADD | EV_ENABLE | EV_ONESHOT,
+                NOTE_WRITE | NOTE_EXTEND, 0, 0);
+            if (kevent(kq, &ev, 1, NULL, 0, &tout) == -1) return 1;
+            if (rename ("iktestfile", "iktestdir/iktestfile") == -1) return 1;
+            if (kevent(kq, NULL, 0, &ev, 1, &tout) != 1) return 1;
+            return (ev.fflags & NOTE_EXTEND) ? 0 : 1;
+        ])
     ],
     [
-        AC_DEFINE([HAVE_O_EMPTY_PATH],[1],[Define to 1 if openat supports O_EMPTY_PATH flag])
-        AC_MSG_RESULT(yes)
+        ik_cv_have_note_extend_in=yes
     ],
-        AC_MSG_RESULT(no)
+        ik_cv_have_note_extend_in=no
     )
+])
+AC_MSG_RESULT($ik_cv_have_note_extend_in)
+if test $ik_cv_have_note_extend_in = "yes"; then
+    AC_DEFINE([HAVE_NOTE_EXTEND_ON_MOVE_TO],[1],[Define to 1 if move_to sets NODE_EXTEND flag])
+fi
+
+
+AC_MSG_CHECKING(for NOTE_EXTEND on moving of a file from the watched subdirectory)
+AC_CACHE_VAL(ik_cv_have_note_extend_out, [
+    AC_RUN_IFELSE(
+    [
+        AC_LANG_PROGRAM(
+        [
+            @%:@include <sys/types.h>
+            @%:@include <sys/event.h>
+            @%:@include <sys/time.h>
+            @%:@include <stdio.h>
+            @%:@include <fcntl.h>
+        ],
+        [
+            int fd, kq;
+            struct kevent ev;
+            static const struct timespec tout = { 1, 0 };
+
+            if ((fd = open("iktestdir", O_RDONLY)) == -1) return 1;
+            if ((kq = kqueue()) == -1) return 1;
+            EV_SET(&ev, fd, EVFILT_VNODE, EV_ADD | EV_ENABLE | EV_ONESHOT,
+                NOTE_WRITE | NOTE_EXTEND, 0, 0);
+            if (kevent(kq, &ev, 1, NULL, 0, &tout) == -1) return 1;
+            if (rename ("iktestdir/iktestfile", "iktestfile") == -1) return 1;
+            if (kevent(kq, NULL, 0, &ev, 1, &tout) != 1) return 1;
+            return (ev.fflags & NOTE_EXTEND) ? 0 : 1;
+        ])
+    ],
+    [
+        ik_cv_have_note_extend_out=yes
+    ],
+        ik_cv_have_note_extend_out=no
+    )
+])
+AC_MSG_RESULT($ik_cv_have_note_extend_out)
+if test $ik_cv_have_note_extend_out = "yes"; then
+    AC_DEFINE([HAVE_NOTE_EXTEND_ON_MOVE_FROM],[1],[Define to 1 if move_from sets NODE_EXTEND flag])
 fi
 
 
 dnl Need a run-time check to build under linuxolator
-if test "$ac_cv_func_faccessat" = "yes"; then
-    AC_MSG_CHECKING(for AT_EMPTY_PATH in fcntl.h)
+AC_MSG_CHECKING(for O_PATH in fcntl.h)
+AC_CACHE_VAL(ik_cv_have_o_path, [
     AC_RUN_IFELSE(
     [
         AC_LANG_PROGRAM(
@@ -378,15 +353,69 @@ if test "$ac_cv_func_faccessat" = "yes"; then
             @%:@include <unistd.h>
         ],
         [
-           return faccessat(open("iktestdir", O_RDONLY), "", R_OK, AT_EACCESS | AT_EMPTY_PATH) < 0;
+            int fd;
+            if ((fd = open("iktestdir", O_PATH)) == -1) return 1;
+            return lseek(fd, 0, SEEK_SET) != -1;
         ])
     ],
     [
-        AC_DEFINE([HAVE_AT_EMPTY_PATH],[1],[Define to 1 if faccessat supports AT_EMPTY_PATH flag])
-        AC_MSG_RESULT(yes)
+        ik_cv_have_o_path=yes
     ],
-        AC_MSG_RESULT(no)
+        ik_cv_have_o_path=no
     )
+])
+AC_MSG_RESULT($ik_cv_have_o_path)
+if test $ik_cv_have_o_path = "yes"; then
+    AC_DEFINE([HAVE_O_PATH],[1],[Define to 1 if open supports O_PATH flag])
+fi
+
+
+dnl Need a run-time check to build under linuxolator
+if test "$ac_cv_func_openat" = "yes"; then
+    AC_MSG_CHECKING(for O_EMPTY_PATH in fcntl.h)
+    AC_CACHE_VAL(ik_cv_have_o_empty_path, [
+        AC_RUN_IFELSE(
+        [
+            AC_LANG_PROGRAM([@%:@include <fcntl.h>],[return openat(open("iktestdir", O_RDONLY), "", O_RDONLY | O_EMPTY_PATH) < 0;])
+        ],
+        [
+            ik_cv_have_o_empty_path=yes
+        ],
+            ik_cv_have_o_empty_path=no
+        )
+    ])
+    AC_MSG_RESULT($ik_cv_have_o_empty_path)
+    if test $ik_cv_have_o_empty_path = "yes"; then
+        AC_DEFINE([HAVE_O_EMPTY_PATH],[1],[Define to 1 if openat supports O_EMPTY_PATH flag])
+    fi
+fi
+
+
+dnl Need a run-time check to build under linuxolator
+if test "$ac_cv_func_faccessat" = "yes"; then
+    AC_MSG_CHECKING(for AT_EMPTY_PATH in fcntl.h)
+    AC_CACHE_VAL(ik_cv_have_at_empty_path, [
+        AC_RUN_IFELSE(
+        [
+            AC_LANG_PROGRAM(
+            [
+                @%:@include <fcntl.h>
+                @%:@include <unistd.h>
+            ],
+            [
+               return faccessat(open("iktestdir", O_RDONLY), "", R_OK, AT_EACCESS | AT_EMPTY_PATH) < 0;
+            ])
+        ],
+        [
+            ik_cv_have_at_empty_path=yes
+        ],
+            ik_cv_have_at_empty_path=no
+        )
+    ])
+    AC_MSG_RESULT($ik_cv_have_at_empty_path)
+    if test $ik_cv_have_at_empty_path = "yes"; then
+        AC_DEFINE([HAVE_AT_EMPTY_PATH],[1],[Define to 1 if faccessat supports AT_EMPTY_PATH flag])
+    fi
 fi
 rm -rf iktestdir
 rm iktestfile
@@ -423,7 +452,7 @@ AC_MSG_RESULT($have_o_evtonly)
 AC_ARG_ENABLE([opendir],
     AS_HELP_STRING([--enable-opendir=no|dup|open], [Do opendir on each directory read @<:@default=dup@:>@]),
     ,
-    AS_IF([test "$have_o_path" = "yes"],
+    AS_IF([test "$ik_cv_have_o_path" = "yes"],
           [enable_opendir=open],
           AS_IF([test "$ac_cv_func_fdopendir" = "yes" -a "$ac_cv_func_fdclosedir" = "yes"],
                 [enable_opendir=no],
@@ -456,16 +485,16 @@ AC_DEFINE_UNQUOTED([READDIR_DOES_OPENDIR],
     [Define to 1/2 if opendir is necessary for each directory read]
 )
 
-if test "$have_o_path" = "yes" -a "$readdir_does_opendir" != "2"; then
+if test "$ik_cv_have_o_path" = "yes" -a "$readdir_does_opendir" != "2"; then
     AC_MSG_WARN([Setting opendir to other value than open effectivelly disables O_PATH support])
-    have_o_path=no
+    ik_cv_have_o_path=no
 fi
 
-if test "$have_o_symlink" = "no" -a "$have_o_path" = "no"; then
+if test "$have_o_symlink" = "no" -a "$ik_cv_have_o_path" = "no"; then
     AC_MSG_WARN([Neither O_PATH nor O_SYMLINK open(2) flags are supported on your system. Watching for symbolic links is unavailable])
 fi
 
-if test "$have_o_evtonly" = "no" -a "$have_o_path" = "no"; then
+if test "$have_o_evtonly" = "no" -a "$ik_cv_have_o_path" = "no"; then
     AC_MSG_WARN([Neither O_PATH nor O_EVTONLY open(2) flags are supported on your system. Unmounting of fs where watch located is unavailable])
 fi
 
