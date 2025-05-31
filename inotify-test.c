@@ -35,7 +35,9 @@
 #include <sys/inotify.h>
 
 void get_event (int fd, const char * target);
+#ifdef IN_DIRECT
 void get_event_direct (int fd, const char * target);
+#endif
 void handle_error (int error);
 
 /* ----------------------------------------------------------------- */
@@ -46,7 +48,7 @@ int main (int argc, char *argv[])
     int ev_count = 0;
     int fd;
     int wd;   /* watch descriptor */
-    int direct = 0;
+    int flags = 0;
 
     struct rlimit rl;
     rl.rlim_cur = 3072;
@@ -61,10 +63,12 @@ int main (int argc, char *argv[])
         fprintf (stderr, "Watching %s\n", argv[1]);
         strcpy (target, argv[1]);
     }
+#ifdef IN_DIRECT
     if (argc == 3 && !strcmp(argv[2], "direct"))
-        direct = 1;
+        flags |= IN_DIRECT;
+#endif
 
-    fd = inotify_init1(direct ? IN_DIRECT : 0);
+    fd = inotify_init1(flags);
     if (fd < 0) {
         printf("inotify_init failed\n");
         handle_error (errno);
@@ -85,9 +89,11 @@ int main (int argc, char *argv[])
         /* } */
 
         ++ev_count;
-        if (direct)
+#ifdef IN_DIRECT
+        if (flags & IN_DIRECT)
             get_event_direct(fd, target);
         else
+#endif
             get_event(fd, target);
     }
 
@@ -164,6 +170,7 @@ void get_event (int fd, const char * target)
 
 }  /* get_event */
 
+#ifdef IN_DIRECT
 void get_event_direct (int fd, const char * target)
 {
     struct iovec *received[5];
@@ -188,6 +195,7 @@ void get_event_direct (int fd, const char * target)
         libinotify_free_iovec (received[i]);
     }
 }  /* get_event */
+#endif
 
 /* ----------------------------------------------------------------- */
 
